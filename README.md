@@ -14,7 +14,7 @@ Everything runs on your PC. Nothing you hear is uploaded.
 
 ## Download
 
-[**Glosslane-Setup-1.0.0.exe**](https://github.com/Niro54321/Glosslane/releases/latest/download/Glosslane-Setup-1.0.0.exe)
+[**Glosslane-Setup-1.0.1.exe**](https://github.com/Niro54321/Glosslane/releases/latest/download/Glosslane-Setup-1.0.1.exe)
 (Windows 10 2004 or later, 64-bit). A per-user installer, no admin rights needed.
 
 The installer is not code-signed, so Windows SmartScreen may warn you the first
@@ -44,6 +44,9 @@ any app's sound ──► WASAPI loopback ──► Silero VAD ──► Whisper
   default (fast, any of 100 languages to any other), or
   [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) for the best
   quality on a GPU, or a LibreTranslate server of your choice (off unless you pick it).
+- **Songs.** The speech detector is trained on talking and misses singing, so
+  with *Also subtitle songs* on (the default) steady sound is read too, and only
+  lines Whisper is confident were sung are shown (music alone stays blank).
 - **Subtitles.** A frameless window that is always on top, ignores the mouse
   (clicks go through to your game or video), never takes the focus, and draws
   Arabic right to left. It fades out after a few quiet seconds.

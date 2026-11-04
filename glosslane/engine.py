@@ -37,7 +37,7 @@ FRAME = 512  # samples per VAD frame (32 ms)
 # Whisper's well-known inventions on music, noise or silence. People do say
 # some of these for real, so they are only dropped when Whisper is unsure.
 HALLUCINATIONS = re.compile(
-    r"^\W*(thanks? (you )?for watching( and see you next time)?|thank you\.?|you|bye\.?|subtitles? by.*"
+    r"^\W*(thanks? (you )?for watching( and see you next time)?|thank you\.?|you|bye\.?|we'll be right back\.?|subtitles? by.*"
     r"|.*amara\.org.*|ご視聴ありがとうございました|字幕.*|продолжение следует|sous-titr.*|untertitel.*"
     r"|♪+|\[.*\]|\(.*\))\W*$", re.I)
 
@@ -46,6 +46,8 @@ def _invented(seg) -> bool:
     if seg.no_speech_prob > 0.6 and seg.avg_logprob < -0.8:
         return True
     text = seg.text.strip()
+    if re.fullmatch(r"[\[(♪*].*[\])♪*]", text):  # [Music], (applause), ♪ la la ♪
+        return True
     return not re.search(r"\w", text) or (HALLUCINATIONS.match(text) is not None
                                           and (seg.no_speech_prob > 0.15 or seg.avg_logprob < -0.45))
 
@@ -128,7 +130,8 @@ class Transcriber:
         self.device = device
         self.sticky = ""  # the language of recent sentences, used when a short clip is ambiguous
 
-    def __call__(self, audio: np.ndarray, language: str | None, final: bool = False, words: bool = False):
+    def __call__(self, audio: np.ndarray, language: str | None, final: bool = False, words: bool = False,
+                 strict: bool = False):
         """-> (text, language, segments, how sure the language is)"""
         lang = to_whisper(language) if language else None
         kwargs = dict(language=lang, beam_size=1, temperature=0.0, condition_on_previous_text=False,
@@ -145,7 +148,9 @@ class Transcriber:
             segments = list(segments)
         if lang is None and final and sure >= 0.7 and len(audio) >= 16000:
             self.sticky = detected
-        kept = [s for s in segments if not _invented(s)]
+        kept = [s for s in segments if not _invented(s)
+                # over music, keep only what Whisper is sure was sung
+                and not (strict and (s.avg_logprob < -0.7 or s.no_speech_prob > 0.4))]
         text = " ".join(s.text.strip() for s in kept).strip()
         if _looping(text):
             text, kept = "", []
@@ -165,6 +170,9 @@ class Engine:
     PREROLL = 0.25           # s of audio kept from before the VAD fires
     START, KEEP = 0.5, 0.3   # VAD probability to start speech / to count as still speaking
     MAX_BEHIND = 5.0         # s of unprocessed audio before skipping ahead
+    LOUD = 0.01              # frame RMS that counts as sound (about -40 dBFS)
+    LOUD_START = 25          # frames (0.8 s) of steady sound that start a "song" sentence
+    MUSIC_LINE = 5.0         # s: songs rarely pause, so lyrics are shown line by line
 
     def __init__(self, settings: Settings, on_event: Callable[[Event], None]):
         self.s = settings
@@ -259,6 +267,7 @@ class Engine:
         pre = np.zeros(0, np.float32)
         u: Utterance | None = None
         next_pass = 0.0
+        loud_run = 0
 
         while not self._stop.is_set():
             if self._new_source:
@@ -301,18 +310,25 @@ class Engine:
                     frame = pending[i * FRAME:(i + 1) * FRAME]
                     frame_t = t - (len(pending) - (i + 1) * FRAME) / RATE
                     p = self.vad(frame)
+                    # Silero is trained on talking and scores singing low, so with
+                    # "songs" on, sustained sound is read too; Whisper then tells
+                    # lyrics from instruments (see _invented).
+                    loud = self.s.songs and float(np.sqrt(np.mean(frame * frame))) > self.LOUD
+                    loud_run = loud_run + 1 if loud else 0
                     if u is None:
                         pre = np.concatenate([pre, frame])[-int(self.PREROLL * RATE):]
-                        if p >= self.START:
+                        if p >= self.START or loud_run >= self.LOUD_START:
                             u = Utterance(pre.copy(), frame_t - len(pre) / RATE, forced)
+                            u.music = p < self.START
                             pre = np.zeros(0, np.float32)
                         continue
-                    u.add(frame, p >= self.KEEP, p >= self.START, frame_t)
+                    music = u.music and loud
+                    u.add(frame, p >= self.KEEP or music, p >= self.START or music, frame_t)
                     if u.silence >= sil_frames:
                         self._finish(u)
                         u = None
                         self.vad.reset()
-                    elif u.length >= max_len:
+                    elif u.length >= (min(max_len, self.MUSIC_LINE * RATE) if u.music else max_len):
                         u = self._cut(u)
                 pending = pending[n * FRAME:]
 
@@ -337,7 +353,7 @@ class Engine:
     def _read(self, u: "Utterance", final: bool) -> None:
         """One Whisper pass over the sentence so far; shows it as a partial."""
         audio = u.audio()
-        text, lang, _, sure = self.asr(audio, u.lang, final=final)
+        text, lang, _, sure = self.asr(audio, u.lang, final=final, strict=u.music)
         u.covered = u.speech_len
         if u.lang is None and sure >= 0.6 and len(audio) >= RATE:
             u.lang = lang  # settle the language once per sentence: no flip-flopping
@@ -367,7 +383,7 @@ class Engine:
     def _cut(self, u: "Utterance") -> "Utterance":
         """A long run of speech with no pause: show what is settled, keep the rest."""
         audio = u.audio()
-        text, lang, segments, sure = self.asr(audio, u.lang, final=True, words=True)
+        text, lang, segments, sure = self.asr(audio, u.lang, final=True, words=True, strict=u.music)
         settled_lang = u.lang or (lang if sure >= 0.6 else None)
         words = [w for s in segments for w in (s.words or [])]
         limit = len(audio) / RATE - 1.2
@@ -390,6 +406,7 @@ class Engine:
                        speech_start=u.start_t, speech_end=u.start_t + settled[-1].end)
         cut = int(settled[-1].end * RATE)
         rest = Utterance(audio[cut:], u.start_t + cut / RATE, settled_lang)
+        rest.music = u.music
         rest.voiced, rest.end_t = 4, u.end_t
         return rest
 
@@ -407,6 +424,7 @@ class Utterance:
         self.speech_len = len(preroll)   # samples up to the newest speech frame
         self.covered = 0                 # speech_len when the newest read was made
         self.text = self.tr = self.detected = ""
+        self.music = False               # started on sound, not on the speech detector
 
     def add(self, frame: np.ndarray, speaking: bool, clear: bool, t: float) -> None:
         self.parts.append(frame)

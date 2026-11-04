@@ -46,6 +46,7 @@ class Settings:
     silence_ms: int = 450              # pause that ends a sentence
     max_sentence: float = 7.0          # seconds before a long run of speech is cut
     partials: bool = True              # show words while the sentence is still being spoken
+    songs: bool = True                 # also read singing over music (the speech detector misses it)
     first_run_done: bool = False
 
     @classmethod

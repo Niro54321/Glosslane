@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glosslane"
-version = "1.0.0"
+version = "1.0.1"
 description = "Live translated subtitles for any sound on your Windows PC, fully offline."
 readme = "README.md"
 license = "MIT"

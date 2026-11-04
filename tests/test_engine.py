@@ -64,7 +64,7 @@ class FakeAsr:
         self.calls: list[float] = []
         self.delay = delay
 
-    def __call__(self, audio, language, final=False, words=False):
+    def __call__(self, audio, language, final=False, words=False, strict=False):
         self.calls.append(len(audio) / RATE)
         time.sleep(self.delay)
         return f"said {len(audio) / RATE:.1f}", (language or "en"), [], 0.99
@@ -155,6 +155,17 @@ def test_skips_ahead_after_a_long_stall(voice):
     # 7 s arrive at once (the PC froze): the engine drops what it can't use.
     _, events = run([voice[1], voice[0], np.zeros(2 * RATE, np.float32)], realtime=False)
     assert any(e.kind == "status" and "skipped" in e.text for _, e in events)
+
+
+def test_songs_mode_reads_steady_sound_the_speech_detector_misses():
+    # A loud tone stands in for singing over music: Silero ignores it.
+    t = np.arange(4 * RATE) / RATE
+    tone = (0.2 * np.sin(2 * np.pi * 330 * t)).astype(np.float32)
+    quiet = np.zeros(RATE, np.float32)
+    _, off = run([quiet, tone, quiet], Settings(songs=False))
+    eng, on = run([quiet, tone, quiet], Settings(songs=True))
+    assert not finals(off)
+    assert finals(on) and eng.asr.calls
 
 
 def test_paused_does_no_work():
