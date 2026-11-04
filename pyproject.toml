@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glosslane"
+version = "1.0.0"
+description = "Live translated subtitles for any sound on your Windows PC, fully offline."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "faster-whisper>=1.1",
+    "ctranslate2>=4.5",
+    "sentencepiece>=0.2",
+    "onnxruntime>=1.18",
+    "numpy>=1.26",
+    "comtypes>=1.4",
+]
+
+[project.optional-dependencies]
+gpu = ["nvidia-cublas-cu12==12.9.2.10", "nvidia-cudnn-cu12==9.27.0.42"]
+dev = ["pytest", "pyflakes", "pyinstaller"]
+
+[project.gui-scripts]
+glosslane = "glosslane.app:main"
+
+[tool.setuptools.packages.find]
+include = ["glosslane*"]
