@@ -14,7 +14,7 @@ Everything runs on your PC. Nothing you hear is uploaded.
 
 ## Download
 
-[**Glosslane-Setup-1.0.1.exe**](https://github.com/Niro54321/Glosslane/releases/latest/download/Glosslane-Setup-1.0.1.exe)
+[**Glosslane-Setup-1.0.2.exe**](https://github.com/Niro54321/Glosslane/releases/latest/download/Glosslane-Setup-1.0.2.exe)
 (Windows 10 2004 or later, 64-bit). A per-user installer, no admin rights needed.
 
 The installer is not code-signed, so Windows SmartScreen may warn you the first
