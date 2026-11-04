@@ -103,9 +103,7 @@ class App:
             self.window.set_status(ev.text)
             self.tray.showMessage("Glosslane", ev.text, QSystemTrayIcon.MessageIcon.Warning, 5000)
         elif ev.kind == "ready":
-            info = ev.extra
-            self.window.set_status(f"Listening · {info['asr']} on {info['device'].upper()} · "
-                                   f"translator: {info['translator']}")
+            self._show_state()
         elif ev.kind == "partial" and self.s.enabled:
             self.overlay.show_partial(ev.text, ev.translation, ev.language)
         elif ev.kind == "final" and self.s.enabled:
@@ -144,7 +142,21 @@ class App:
         else:
             self.overlay.clear()
             self.overlay.hide()
-            self.tray.showMessage("Glosslane", "Subtitles off", QSystemTrayIcon.MessageIcon.NoIcon, 1200)
+            self.tray.showMessage("Glosslane", f"Subtitles off. Press {self.s.hotkey} to turn them back on.",
+                                  QSystemTrayIcon.MessageIcon.NoIcon, 2500)
+        self._show_state()
+
+    def _show_state(self) -> None:
+        """Say plainly whether subtitles are off: off looks the same as 'nobody is talking'."""
+        info = self.engine.info if self.engine else {}
+        if not self.s.enabled:
+            text = f"Subtitles are OFF. Tick 'Subtitles on' or press {self.s.hotkey}."
+        elif info:
+            text = f"Listening · {info['asr']} on {info['device'].upper()} · translator: {info['translator']}"
+        else:
+            return
+        self.window.set_status(text)
+        self.tray.setToolTip("Glosslane: " + ("subtitles on" if self.s.enabled else "subtitles off"))
 
     def toggle(self) -> None:
         self._set_enabled(not self.s.enabled)
